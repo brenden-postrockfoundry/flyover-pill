@@ -1,7 +1,7 @@
 # flyover-pill
 
 An Omarchy bar widget: an ambient "aircraft nearby" count for the bar,
-click to launch (or focus) [flyover](https://github.com/brenden-postrockfoundry/flyover), a
+click to launch (or focus) [flyover](https://github.com/linuxbren/flyover), a
 real-time ADS-B radar scope for the terminal.
 
 This widget is deliberately thin — it owns no scope-drawing logic of its
@@ -13,10 +13,10 @@ binary in a new terminal window on click.
 ## Install
 
 ```
-omarchy plugin add https://github.com/brenden-postrockfoundry/flyover-pill.git --enable
+omarchy plugin add https://github.com/linuxbren/flyover-pill.git --enable
 ```
 
-Requires [flyover](https://github.com/brenden-postrockfoundry/flyover) itself to be built and
+Requires [flyover](https://github.com/linuxbren/flyover) itself to be built and
 either on your `PATH` or cloned to `~/flyover` (the widget checks `PATH`
 first, falling back to `~/flyover/target/release/flyover`).
 
