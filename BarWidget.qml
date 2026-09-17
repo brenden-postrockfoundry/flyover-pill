@@ -5,9 +5,12 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Ambient "aircraft nearby" count for the bar. Click launches the flyover
-// TUI scope in a new terminal. Deliberately thin: this widget owns no
-// scope-drawing logic of its own — that all lives in the flyover binary.
+// Ambient "aircraft nearby" count for the bar. Left-click launches the
+// flyover TUI scope in a new terminal; right-click toggles the flyover
+// screensaver on/off via Omarchy's own `omarchy branding screensaver
+// text|reset` (repurposed by flyover's packaging/screensaver patches).
+// Deliberately thin: this widget owns no scope-drawing or
+// screensaver-patching logic of its own — that all lives in flyover itself.
 //
 // No hyprctl/focus-existing-window logic: this Hyprland build replaced the
 // classic string dispatchers (`hyprctl dispatch focuswindow class:...`) with
@@ -112,11 +115,61 @@ BarWidget {
     }
   }
 
+  // Whether the flyover screensaver patch is currently applied. Detected by
+  // checking the live omarchy-screensaver script for flyover's marker
+  // comment, rather than tracked as our own state, so this stays correct
+  // even if the patch was applied/reverted from a terminal instead of here.
+  property bool screensaverEnabled: false
+
+  function checkScreensaverState() {
+    if (!checkScreensaverStateProc.running) checkScreensaverStateProc.running = true
+  }
+
+  Process {
+    id: checkScreensaverStateProc
+    running: true
+    command: ["/usr/bin/bash", "-c",
+      "grep -q 'flyover:live-patch' \"$(readlink -f \"$(command -v omarchy-screensaver)\")\" 2>/dev/null && echo enabled || echo disabled"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.screensaverEnabled = String(text || "").trim() === "enabled"
+      }
+    }
+  }
+
+  function toggleScreensaver() {
+    if (toggleScreensaverProc.running) return
+    toggleScreensaverProc.command = ["/usr/bin/omarchy", "branding", "screensaver", root.screensaverEnabled ? "reset" : "text"]
+    toggleScreensaverProc.running = true
+  }
+
+  // `omarchy branding screensaver text|reset` already sends its own desktop
+  // notification and relaunches the screensaver for a preview -- this just
+  // re-checks state afterward so screensaverEnabled (and the tooltip) stay
+  // accurate.
+  Process {
+    id: toggleScreensaverProc
+    stderr: StdioCollector {
+      onStreamFinished: if (text) console.warn("bren.flyover screensaver toggle stderr: " + text)
+    }
+    onExited: root.checkScreensaverState()
+  }
+
   WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: root.displayText
-    onPressed: function(b) { root.openScope() }
+    tooltipText: root.screensaverEnabled
+      ? "click: open scope · right-click: disable screensaver"
+      : "click: open scope · right-click: enable screensaver"
+    onPressed: function(b) {
+      if (b === Qt.RightButton) {
+        root.toggleScreensaver()
+      } else {
+        root.openScope()
+      }
+    }
   }
 }
