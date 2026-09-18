@@ -28,21 +28,30 @@ BarWidget {
   readonly property string weatherLocationPath: Quickshell.env("HOME") + "/.local/state/omarchy/settings/weather.json"
   readonly property string scopeAppId: "flyover-scope"
   readonly property string homeDir: Quickshell.env("HOME")
-  // Resolved from PATH at startup (resolveBinaryProc below) when flyover is
-  // properly installed; this is just the fallback for a plain git-clone-and-
-  // cargo-build setup, so the widget still works without assuming any one
-  // install location or repo directory name.
-  property string scopeBinary: homeDir + "/flyover/target/release/flyover"
+  // Resolved at startup (resolveBinaryProc below) by checking the user's
+  // shell PATH first, then a few well-known absolute locations. Quickshell's
+  // own PATH excludes ~/.cargo/bin, so a plain `cargo install flyover` lands
+  // the binary somewhere `command -v` won't see from inside the shell —
+  // check that path and a couple of others explicitly so the widget works
+  // out of the box regardless of how flyover was installed. Empty string
+  // here means "not found anywhere"; launchProc short-circuits in that case.
+  property string scopeBinary: ""
+  property bool flyoverMissing: true
 
   Process {
     id: resolveBinaryProc
     running: true
-    command: ["/usr/bin/bash", "-c", "command -v flyover"]
+    command: ["/usr/bin/bash", "-c",
+      "command -v flyover 2>/dev/null || " +
+      "for c in \"$HOME/.cargo/bin/flyover\" /usr/bin/flyover /usr/local/bin/flyover; do " +
+        "[ -x \"$c\" ] && echo \"$c\" && break; " +
+      "done"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         var resolved = String(text || "").trim()
-        if (resolved) root.scopeBinary = resolved
+        root.scopeBinary = resolved
+        root.flyoverMissing = resolved.length === 0
       }
     }
   }
@@ -54,7 +63,9 @@ BarWidget {
   property int aircraftCount: -1
   readonly property string displayText: !hasLocation
     ? "✈ ?"
-    : (aircraftCount < 0 ? "✈ …" : ("✈ " + aircraftCount))
+    : (flyoverMissing
+        ? "✈ !"
+        : (aircraftCount < 0 ? "✈ …" : ("✈ " + aircraftCount)))
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -101,7 +112,18 @@ BarWidget {
   }
 
   function openScope() {
+    if (root.flyoverMissing) {
+      // Open the install README rather than doing nothing silently. xdg-open
+      // is the standard Linux way to hand a URL to the user's preferred app.
+      missingProc.running = true
+      return
+    }
     launchProc.running = true
+  }
+
+  Process {
+    id: missingProc
+    command: ["/usr/bin/xdg-open", "https://github.com/linuxbren/flyover#install"]
   }
 
   // Direct argv invocation — no shell involved, so no quoting to get wrong.
@@ -161,9 +183,13 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.displayText
-    tooltipText: root.screensaverEnabled
-      ? "click: open scope · right-click: disable screensaver"
-      : "click: open scope · right-click: enable screensaver"
+    tooltipText: !root.hasLocation
+      ? "set a location: omarchy-weather-location --set \"<name>\" <lat,lon>"
+      : (root.flyoverMissing
+          ? "flyover not installed — click for install instructions"
+          : (root.screensaverEnabled
+              ? "click: open scope · right-click: disable screensaver"
+              : "click: open scope · right-click: enable screensaver"))
     onPressed: function(b) {
       if (b === Qt.RightButton) {
         root.toggleScreensaver()
